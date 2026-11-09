@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>마스콘 기관사</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #101820; color: #f2f2f2;
+    font-family: "Noto Sans KR", "Malgun Gothic", sans-serif; user-select: none;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel {
+    position: fixed; background: rgba(0, 0, 0, 0.65); border-radius: 10px; padding: 12px 14px;
+  }
+  #hud { top: 12px; left: 12px; min-width: 230px; line-height: 1.6; }
+  #hud .label { color: #aaa; font-size: 13px; }
+  #hud .big { font-size: 34px; font-weight: 700; }
+  #hud .val { font-size: 20px; font-weight: 700; }
+  #msg {
+    top: 12px; left: 50%; transform: translateX(-50%); display: none;
+    font-size: 17px; font-weight: 700; padding: 10px 18px; white-space: nowrap;
+  }
+  #eb {
+    top: 64px; left: 50%; transform: translateX(-50%); display: none;
+    background: rgba(200, 30, 30, 0.9); font-size: 22px; font-weight: 900; padding: 8px 24px;
+  }
+  #lever { bottom: 14px; right: 14px; width: 170px; }
+  #cells { margin-bottom: 8px; }
+  .notch {
+    height: 24px; margin: 2px 0; border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; background: #2a2f36; color: #888; font-size: 13px; font-weight: 700;
+  }
+  .notch.active.p { background: #2e8b57; color: #fff; }
+  .notch.active.b { background: #c0392b; color: #fff; }
+  .notch.active.n { background: #d4a017; color: #111; }
+  .btn {
+    display: block; width: 100%; margin: 5px 0; padding: 9px; border: 0; border-radius: 6px;
+    background: #3a4454; color: #fff; font-size: 14px; font-family: inherit; cursor: pointer;
+  }
+  .btn:active { filter: brightness(1.3); }
+  .btn.eb { background: #b03030; }
+  #keys { bottom: 14px; left: 12px; font-size: 13px; color: #bbb; line-height: 1.6; }
+  #result {
+    top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; text-align: center;
+    padding: 24px 30px; min-width: 260px; font-size: 18px;
+  }
+  #result h2 { margin: 0 0 10px; }
+  #result .btn { width: auto; padding: 10px 24px; margin-top: 12px; display: inline-block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="panel">
+  <div class="label">현재 속도</div>
+  <div><span class="big" id="spd">0</span> <span class="label">km/h</span></div>
+  <div class="label">제한 속도 <span class="val" id="lim">60</span> km/h</div>
+  <div class="label">마스콘</div>
+  <div class="val" id="notchTxt">N</div>
+  <div class="label">다음 정차 목표</div>
+  <div id="dist">-</div>
+  <div id="state" style="color:#ffd966;"></div>
+  <div class="label">점수</div>
+  <div class="val" id="score">0</div>
+</div>
+
+<div id="msg" class="panel"></div>
+<div id="eb" class="panel">비상제동 작동 중</div>
+
+<div id="lever" class="panel">
+  <div id="cells"></div>
+  <button class="btn" id="up">▲ 올리기 (↑ / W)</button>
+  <button class="btn" id="down">▼ 내리기 (↓ / S)</button>
+  <button class="btn eb" id="ebBtn">비상제동 (Space)</button>
+  <button class="btn" id="neu">중립 N (0)</button>
+</div>
+
+<div id="keys" class="panel">
+  ↑/W 마스콘 올리기 · ↓/S 마스콘 내리기<br>
+  Space 비상제동 · 0 중립 · R 다시 시작
+</div>
+
+<div id="result" class="panel"></div>
+
+<script>
+// ---------- 기본 설정 ----------
+const PX = 4;                 // 1m당 픽셀
+const VMAX = 31;              // 최고 속도(m/s, 약 112km/h)
+const RESIST = 0.03;          // 주행 저항 (m/s²)
+const ACC = [0, 0.25, 0.45, 0.65, 0.9];          // P0~P4 가속도
+const DEC = [0, 0.2, 0.35, 0.5, 0.65, 0.8, 1.0, 1.2]; // B0~B7 감속도
+const EB_DEC = 2.8;           // 비상제동 감속도
+
+const STATIONS = [
+  { name: '해뜸역',  stop: 400  },
+  { name: '달빛역',  stop: 1100 },
+  { name: '은하역',  stop: 1900 },
+  { name: '종착역',  stop: 2700 },
+];
+
+// 구간별 제한속도 (from: 시작 위치 m, kmh)
+const LIMITS = [
+  { from: 0,    kmh: 60 },
+  { from: 600,  kmh: 90 },
+  { from: 900,  kmh: 50 },
+  { from: 1300, kmh: 90 },
+  { from: 1600, kmh: 60 },
+  { from: 2200, kmh: 80 },
+  { from: 2500, kmh: 50 },
+  { from: 2900, kmh: 40 },
+];
+
+// ---------- 상태 ----------
+let x = 0, v = 0, notch = 0;
+let emergency = false;
+let stationIdx = 0, dwell = 0, score = 0, finished = false;
+let msgTimer = 0;
+
+// ---------- DOM ----------
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const spdEl = document.getElementById('spd');
+const limEl = document.getElementById('lim');
+const notchTxt = document.getElementById('notchTxt');
+const distEl = document.getElementById('dist');
+const stateEl = document.getElementById('state');
+const scoreEl = document.getElementById('score');
+const msgEl = document.getElementById('msg');
+const ebEl = document.getElementById('eb');
+const resultEl = document.getElementById('result');
+const cellsEl = document.getElementById('cells');
+
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener('resize', resize);
+resize();
+
+// ---------- 마스콘 UI ----------
+function notchName(n) { return n > 0 ? 'P' + n : n < 0 ? 'B' + (-n) : 'N'; }
+
+const cells = {};
+for (let n = 4; n >= -7; n--) {
+  const d = document.createElement('div');
+  d.className = 'notch';
+  d.textContent = notchName(n);
+  cellsEl.appendChild(d);
+  cells[n] = d;
+}
+
+function updateLever() {
+  for (const k in cells) {
+    const n = Number(k);
+    const el = cells[k];
+    el.classList.remove('active', 'p', 'b', 'n');
+    if (n === notch) el.classList.add('active', n > 0 ? 'p' : n < 0 ? 'b' : 'n');
+  }
+}
+
+function setNotch(n) { notch = Math.max(-7, Math.min(4, n)); updateLever(); }
+function notchUp()   { setNotch(notch + 1); }
+function notchDown() { setNotch(notch - 1); }
+
+function emergencyBrake() {
+  emergency = true;
+  showMsg('비상제동!', 1500);
+}
+
+document.getElementById('up').addEventListener('click', notchUp);
+document.getElementById('down').addEventListener('click', notchDown);
+document.getElementById('neu').addEventListener('click', () => setNotch(0));
+document.getElementById('ebBtn').addEventListener('click', emergencyBrake);
+
+// ---------- 키보드 ----------
+addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+  if (e.repeat) return;
+  switch (e.key) {
+    case 'ArrowUp': case 'w': case 'W': notchUp(); break;
+    case 'ArrowDown': case 's': case 'S': notchDown(); break;
+    case ' ': case 'e': case 'E': emergencyBrake(); break;
+    case '0': case 'n': case 'N': setNotch(0); break;
+    case 'r': case 'R': restart(); break;
+  }
+});
+
+// ---------- 유틸 ----------
+function limitAt(pos) {
+  let k = LIMITS[0].kmh;
+  for (const L of LIMITS) if (pos >= L.from) k = L.kmh;
+  return k;
+}
+
+function showMsg(text, ms = 2500) {
+  msgEl.textContent = text;
+  msgEl.style.display = 'block';
+  msgTimer = ms / 1000;
+}
+
+function advanceStation() {
+  stationIdx++;
+  if (stationIdx >= STATIONS.length) finish();
+}
+
+function finish() {
+  finished = true;
+  const s = Math.round(score);
+  const grade = s >= 330 ? '명기관사' : s >= 220 ? '숙련 기관사' : '수습 기관사';
+  resultEl.innerHTML = `
+    <h2>운행 완료</h2>
+    <p>최종 점수 <b>${s}</b>점</p>
+    <p>${grade}</p>
+    <button class="btn" onclick="restart()">다시 시작 (R)</button>`;
+  resultEl.style.display = 'block';
+}
+
+// ---------- 게임 로직 ----------
+function update(dt) {
+  if (msgTimer > 0) {
+    msgTimer -= dt;
+    if (msgTimer <= 0) msgEl.style.display = 'none';
+  }
+
+  const target = STATIONS[stationIdx];
+  const limit = limitAt(x);
+  const kmh = v * 3.6;
+
+  // ATS: 제한속도 +10km/h 초과 시 자동 비상제동
+  if (!emergency && kmh > limit + 10) {
+    emergency = true;
+    score -= 30;
+    showMsg('ATS 작동! 과속으로 자동 비상제동', 3000);
+  }
+  // 과속 감점
+  if (kmh > limit) score -= 4 * dt;
+
+  // 가감속 계산
+  let a = 0;
+  if (emergency) {
+    a = -EB_DEC;
+  } else if (notch > 0) {
+    a = (dwell > 0) ? 0 : ACC[notch] * Math.max(0, 1 - v / VMAX);
+  } else if (notch < 0) {
+    a = -DEC[-notch];
+  }
+  if (v > 0) a -= RESIST;
+
+  const prevV = v;
+  v = Math.max(0, v + a * dt);
+  x += v * dt;
+
+  if (emergency && v === 0) emergency = false;
+
+  // 정차 시간 진행
+  if (dwell > 0) {
+    dwell -= dt;
+    if (dwell <= 0) {
+      dwell = 0;
+      advanceStation();
+      if (!finished) showMsg('출발 준비 완료. 마스콘을 올려 출발하세요', 3000);
+      return;
+    }
+  }
+
+  // 정차 판정: 움직이다가 멈춘 순간, 정차 구역 안이면 평가
+  if (prevV > 0 && v === 0 && dwell === 0) {
+    if (x >= target.stop - 30 && x <= target.stop + 10) {
+      const e = Math.abs(target.stop - x);
+      let pts, grade;
+      if (e <= 0.5)      { pts = 100; grade = '완벽한 정차'; }
+      else if (e <= 1.5) { pts = 80;  grade = '우수'; }
+      else if (e <= 3)   { pts = 50;  grade = '양호'; }
+      else if (e <= 5)   { pts = 25;  grade = '미흡'; }
+      else               { pts = 10;  grade = '정차 위치 이탈'; }
+      score += pts;
+      dwell = 8;
+      showMsg(`${target.name} 정차: ${grade} (오차 ${e.toFixed(1)}m, +${pts}점)`, 4000);
+      return;
+    }
+  }
+
+  // 정차 목표를 지나쳐 버린 경우 (0점)
+  if (dwell === 0 && x > target.stop + 10) {
+    showMsg(`${target.name} 통과! 정차 실패 (0점)`, 3500);
+    advanceStation();
+  }
+}
+
+// ---------- 그리기 ----------
+function drawLimitSign(sx, y, kmh) {
+  ctx.fillStyle = '#666';
+  ctx.fillRect(sx - 2, y, 4, 30);
+  ctx.beginPath();
+  ctx.arc(sx, y - 6, 14, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#d33';
+  ctx.stroke();
+  ctx.fillStyle = '#111';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(kmh, sx, y - 6);
+}
+
+function drawTrain(camX, trackY) {
+  const frontX = x * PX - camX;
+  for (let k = 0; k < 4; k++) {
+    const sx0 = frontX - (80 - k * 20) * PX + 1;
+    const w = 20 * PX - 2;
+
+    // 차체
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(sx0, trackY - 72, w, 64);
+    // 지붕
+    ctx.fillStyle = '#555';
+    ctx.fillRect(sx0, trackY - 76, w, 5);
+    // 파란 띠
+    ctx.fillStyle = '#1f5fa8';
+    ctx.fillRect(sx0, trackY - 50, w, 10);
+    // 창문
+    ctx.fillStyle = '#22384d';
+    ctx.fillRect(sx0 + 6, trackY - 66, w - 12, 22);
+
+    // 맨 앞 칸 운전실
+    if (k === 3) {
+      ctx.fillStyle = '#111';
+      ctx.fillRect(sx0 + w - 16, trackY - 68, 12, 28);
+      ctx.fillStyle = emergency ? '#ff3b3b' : '#ffe98a';
+      ctx.beginPath();
+      ctx.arc(sx0 + w - 4, trackY - 14, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 바퀴
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(sx0 + 14, trackY - 2, 5, 0, Math.PI * 2);
+    ctx.arc(sx0 + w - 14, trackY - 2, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function draw() {
+  const camX = x * PX - W * 0.6;
+  const trackY = H * 0.72;
+
+  // 하늘 / 땅
+  ctx.fillStyle = '#9fd8f0';
+  ctx.fillRect(0, 0, W, H * 0.5);
+  ctx.fillStyle = '#6fa35a';
+  ctx.fillRect(0, H * 0.5, W, trackY + 10 - H * 0.5);
+
+  // 자갈
+  ctx.fillStyle = '#8a8a86';
+  ctx.fillRect(0, trackY + 10, W, H - trackY);
+
+  // 침목
+  ctx.fillStyle = '#5a4a3a';
+  const m0 = Math.floor(camX / PX / 3) * 3;
+  for (let m = m0; m * PX - camX < W; m += 3) {
+    ctx.fillRect(m * PX - camX, trackY + 6, 8, 12);
+  }
+
+  // 선로
+  ctx.fillStyle = '#c8c8c8';
+  ctx.fillRect(0, trackY, W, 3);
+  ctx.fillRect(0, trackY + 7, W, 3);
+
+  // 역 (승강장, 정차 구역, 정차 목표선)
+  for (const st of STATIONS) {
+    const p1 = (st.stop - 120) * PX - camX;
+    const p2 = (st.stop + 20) * PX - camX;
+    if (p2 < -50 || p1 > W + 50) continue;
+
+    // 지붕 & 역명
+    ctx.fillStyle = '#4a5a6a';
+    ctx.fillRect(p1, trackY - 110, p2 - p1, 26);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(st.name, (p1 + p2) / 2, trackY - 97);
+
+    // 승강장
+    ctx.fillStyle = '#b8b8b8';
+    ctx.fillRect(p1, trackY - 38, p2 - p1, 36);
+    ctx.fillStyle = '#e6c84a';
+    ctx.fillRect(p1, trackY - 4, p2 - p1, 4);
+
+    // 정차 구역 (지면 표시)
+    const z1 = (st.stop - 30) * PX - camX;
+    const z2 = (st.stop + 10) * PX - camX;
+    ctx.fillStyle = 'rgba(80, 220, 120, 0.45)';
+    ctx.fillRect(z1, trackY + 14, z2 - z1, 8);
+
+    // 정차 목표선
+    const sx = st.stop * PX - camX;
+    ctx.strokeStyle = '#ff5555';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(sx, trackY - 100);
+    ctx.lineTo(sx, trackY + 30);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff5555';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText('정차 목표', sx, trackY - 102);
+  }
+
+  // 제한속도 표지판
+  for (const L of LIMITS) {
+    if (L.from === 0) continue;
+    const sx = L.from * PX - camX;
+    if (sx < -40 || sx > W + 40) continue;
+    drawLimitSign(sx, trackY + 40, L.kmh);
+  }
+
+  drawTrain(camX, trackY);
+}
+
+// ---------- HUD ----------
+function updateHUD() {
+  const limit = limitAt(x);
+  const kmh = Math.round(v * 3.6);
+  spdEl.textContent = kmh;
+  spdEl.style.color = kmh > limit ? '#ff5252' : '#fff';
+  limEl.textContent = limit;
+  notchTxt.textContent = notchName(notch);
+
+  const t = STATIONS[Math.min(stationIdx, STATIONS.length - 1)];
+  const d = t.stop - x;
+  distEl.textContent = (d >= 0 ? d.toFixed(0) + ' m' : '통과') + '  (' + t.name + ')';
+  stateEl.textContent = dwell > 0 ? `정차 중 (${Math.ceil(dwell)}초)` : (emergency ? '비상제동 중' : '');
+  scoreEl.textContent = Math.round(score);
+  ebEl.style.display = emergency ? 'block' : 'none';
+}
+
+// ---------- 시작 / 재시작 ----------
+function restart() {
+  x = 0; v = 0; notch = 0; emergency = false;
+  stationIdx = 0; dwell = 0; score = 0; finished = false;
+  resultEl.style.display = 'none';
+  updateLever();
+  showMsg('마스콘을 올려 P1부터 출발하세요. 제한속도를 지키며 정차 목표에 맞추세요.', 5000);
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!finished) update(dt);
+  draw();
+  updateHUD();
+  requestAnimationFrame(frame);
+}
+
+restart();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
