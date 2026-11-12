@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<!-- v0.9.0 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -31,34 +32,38 @@
   }
 
   .panel {
-    position: fixed; background: rgba(0, 0, 0, 0.65); border-radius: 10px; padding: 12px 14px;
+    position: fixed; background: rgba(0, 0, 0, 0.65); border-radius: 10px; padding: 10px 12px;
   }
 
-  /* 상단 바 */
-  #hud {
-    top: 0; left: 0; right: 0; border-radius: 0; padding: 8px 16px; line-height: 1.4;
-    display: flex; flex-wrap: wrap; justify-content: space-around; align-items: center; gap: 10px 18px;
-    background: rgba(0, 0, 0, 0.72);
-  }
-  #hud .item { text-align: center; }
-  #hud .label { color: #aaa; font-size: 13px; }
-  #hud .big { font-size: 34px; font-weight: 700; }
-  #hud .val { font-size: 20px; font-weight: 700; }
-  #clockTxt { font-variant-numeric: tabular-nums; }
-  #ttDiff { font-size: 13px; }
+  /* 좌상단: 속도계 */
+  #gauge { top: 10px; left: 10px; width: 240px; text-align: center; }
+  #gauge svg { width: 100%; height: auto; display: block; }
+  #spd { font-size: 54px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  #dirTxt { font-size: 14px; color: #ccc; margin-top: 2px; }
+  #ovBar { height: 8px; background: #222; border-radius: 4px; margin: 8px 0 0; overflow: hidden; }
+  #ovFill { height: 100%; width: 0; background: #ffd966; transition: width 0.2s; }
+
+  /* 우상단: 운행 정보 */
+  #info { top: 10px; right: 10px; width: min(460px, 52vw); text-align: center; }
+  #info .head { font-size: 22px; font-weight: 700; }
+  #clockTxt { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  #stateTxt { font-size: 17px; font-weight: 700; color: #5fd8f0; min-height: 22px; }
+  #tgtRow { font-size: 16px; min-height: 22px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  #doorRow { font-size: 15px; margin-top: 4px; }
+  #scoreRow { font-size: 20px; font-weight: 700; margin-top: 6px; }
 
   #msg {
-    top: 96px; left: 50%; transform: translateX(-50%); display: none;
+    top: 230px; left: 50%; transform: translateX(-50%); display: none;
     font-size: 17px; font-weight: 700; padding: 10px 18px; white-space: nowrap;
   }
   #eb {
-    top: 150px; left: 50%; transform: translateX(-50%); display: none;
+    top: 280px; left: 50%; transform: translateX(-50%); display: none;
     background: rgba(200, 30, 30, 0.9); font-size: 22px; font-weight: 900; padding: 8px 24px;
   }
 
   /* 시각표 패널 (T 키) */
   #tt {
-    top: 84px; left: 12px; display: none; min-width: 250px; font-size: 14px;
+    top: 240px; right: 10px; display: none; min-width: 250px; font-size: 14px;
   }
   #tt .tt-title { font-weight: 700; margin-bottom: 6px; color: #ffd966; }
   #tt table { width: 100%; border-collapse: collapse; }
@@ -66,13 +71,13 @@
   #tt tr.done td { color: #777; }
   #tt tr.cur td { color: #ffd966; font-weight: 700; }
 
-  /* 스킵 버튼 (정차 후 출발 대기 중에만 표시) */
+  /* 스킵 버튼 (출발 시각 10초 이상 전, 문을 한 번 이상 연 뒤) */
   #skipBtn {
-    position: fixed; left: 50%; bottom: 190px; transform: translateX(-50%);
+    position: fixed; left: 50%; bottom: 200px; transform: translateX(-50%);
     width: auto; padding: 12px 26px; font-size: 16px; display: none; z-index: 5;
   }
 
-  /* 하단 바: 왼쪽 롤러 / 가운데 제어판 / 오른쪽 출입문·비상 */
+  /* 하단 바: 왼쪽 롤러 / 가운데 제어판 / 오른쪽 출입문·방향·비상 */
   #lever {
     left: 0; right: 0; bottom: 0; border-radius: 0; padding: 10px 16px;
     display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: 16px;
@@ -81,7 +86,6 @@
   .lv-left { min-width: 0; }
   .lv-left .label { text-align: center; font-size: 13px; color: #aaa; }
 
-  /* 세로 롤지 창: 5칸(현재 단 ±2)이 보이고, 가운데 칸이 노출창 */
   #scrollWrap {
     position: relative; height: 120px; margin-top: 4px; overflow: hidden;
     background: #0b0d10; border: 3px solid #5b636e; border-radius: 8px;
@@ -112,10 +116,10 @@
   .lv-mid, .lv-right { display: flex; flex-direction: column; gap: 6px; }
   .lv-mid .btn { width: 100%; margin: 0; padding: 9px 10px; }
 
-  /* 오른쪽 출입문·비상 패널 (2열 격자) */
-  .rt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .rt-grid .btn { width: 100%; margin: 0; padding: 8px 6px; }
+  .rt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .rt-grid .btn { width: 100%; margin: 0; padding: 6px 4px; font-size: 13px; }
   .rt-grid .hint { grid-column: 1 / span 2; font-size: 12px; color: #aaa; text-align: center; }
+  .rt-grid #restartBtn { grid-column: 1 / span 2; }
   .rt-grid #ebBtn { grid-column: 1 / span 2; }
   .btn {
     display: block; width: 100%; margin: 5px 0; padding: 9px; border: 0; border-radius: 6px;
@@ -124,6 +128,7 @@
   .btn:active { filter: brightness(1.3); }
   .btn.eb { background: #b03030; }
   .btn.door { background: #2f6f8f; }
+  .btn.dir { background: #5a4a2a; }
 
   #result {
     top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; text-align: center;
@@ -144,37 +149,28 @@
   <div class="dash"></div>
 </div>
 
-<div id="hud" class="panel">
-  <div class="item">
-    <div class="label">현재 속도</div>
-    <div><span class="big" id="spd">0</span> <span class="label">km/h</span></div>
-  </div>
-  <div class="item">
-    <div class="label">제한 속도</div>
-    <div class="val"><span id="lim">60</span> km/h</div>
-  </div>
-  <div class="item">
-    <div class="label">마스콘</div>
-    <div class="val" id="notchTxt">N</div>
-  </div>
-  <div class="item">
-    <div class="label">운행 시각</div>
-    <div class="val" id="clockTxt">06:00:00</div>
-    <div id="ttDiff" style="color:#ccc;">-</div>
-  </div>
-  <div class="item">
-    <div class="label">다음 정차 목표</div>
-    <div id="dist">-</div>
-    <div id="state" style="color:#ffd966;"></div>
-  </div>
-  <div class="item">
-    <div class="label">출입문 / 스크린도어</div>
-    <div class="val" id="doorTxt">닫힘</div>
-  </div>
-  <div class="item">
-    <div class="label">점수</div>
-    <div class="val" id="score">0</div>
-  </div>
+<div id="gauge" class="panel">
+  <svg viewBox="0 0 200 130">
+    <path id="zG" fill="none" stroke="#2ecc40" stroke-width="14"/>
+    <path id="zY" fill="none" stroke="#ffd966" stroke-width="14"/>
+    <path id="zR" fill="none" stroke="#e8192c" stroke-width="14"/>
+    <g id="ticks"></g>
+    <line id="limLine" stroke="#fff" stroke-width="3"/>
+    <line id="needle" x1="100" y1="100" x2="100" y2="20" stroke="#ff9f43" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="100" cy="100" r="7" fill="#ff9f43"/>
+  </svg>
+  <div id="spd">0</div>
+  <div id="dirTxt">km/h · 전진</div>
+  <div id="ovBar"><div id="ovFill"></div></div>
+</div>
+
+<div id="info" class="panel">
+  <div class="head">제한 속도 <span id="limTxt">60</span>km/h <span style="color:#777">·</span> 감점 <span id="segPen">0</span> / <span id="segCap">20</span></div>
+  <div id="clockTxt">06:00:00</div>
+  <div id="stateTxt"></div>
+  <div id="tgtRow"></div>
+  <div id="doorRow"></div>
+  <div id="scoreRow">점수 <span id="score">0</span></div>
 </div>
 
 <div id="tt" class="panel"></div>
@@ -201,7 +197,8 @@
     <button class="btn door" id="openA" title="O">열림 ①</button>
     <button class="btn door" id="openB" title="P">열림 ②</button>
     <button class="btn door" id="closeBtn" title="C">닫힘</button>
-    <button class="btn" id="restartBtn" title="R">다시하기</button>
+    <button class="btn dir" id="dirBtn" title="G">▶ 전진 (G)</button>
+    <button class="btn" id="restartBtn" title="R">다시하기 (R)</button>
     <button class="btn eb" id="ebBtn" title="Space">비상제동</button>
   </div>
 </div>
@@ -210,21 +207,36 @@
 
 <script>
 // ---------- 기본 설정 ----------
-const VMAX = 31;              // 최고 속도(m/s, 약 112km/h)
+const VMAX = 31;              // 전진 최고 속도(m/s, 약 112km/h)
+const REV_VMAX = 10 / 3.6;    // 후진 최고 속도(m/s, 10km/h)
+const REV_LIMIT_KMH = 10;     // 후진 제한 표시값
+const GAUGE_MAX = 112;        // 속도계 최대 눈금(km/h)
+const X_MIN = -30;            // 후진 한계 위치(m)
 const RESIST = 0.03;          // 주행 저항 (m/s²)
 const ACC = [0, 0.25, 0.45, 0.65, 0.9];          // P0~P4 가속도
 const DEC = [0, 0.2, 0.35, 0.5, 0.65, 0.8, 1.0, 1.2]; // B0~B7 감속도
 const EB_DEC = 2.8;           // 비상제동 감속도
-const PSD_RANGE = 10;         // 정위치 정차 판정(PSD 연동) 범위 ±m
+const PSD_RANGE = 10;         // 정차구역 ±m
 const OPEN_T = 1.2;           // 문 열림 소요 시간(초)
 const CLOSE_T = 1.5;          // 문 닫힘 소요 시간(초)
 
-// 시각표 (운행 시계: 06:00:00 기준 초)
+// 과속 규칙
+const OVER_TOL = 5;           // 허용 초과(km/h): 이 이내 감점 없음
+const ATS_KMH = 10;           // 이 초과 시 ATS 발동
+const OVER_PEN = 1;           // 주의 구간 초당 감점
+const OVER_CAP = 20;          // 제한속도 구간당 최대 감점
+const ATS_PEN = 60;           // ATS 발동 감점
+
+// 시각표 / 승하차 / 점수
 const DWELL_MIN = 15;         // 문이 완전히 열린 뒤 최소 승하차 시간(초)
 const EARLY_CLOSE_PENALTY = 50; // 15초 전 닫힘 감점
-const DEP_TOL = 10;           // 출발 허용 지연(초), 초과분만 감점
+const DEP_TOL = 10;           // 출발 허용 지연(초)
 const DEP_PEN_PER_SEC = 2;    // 출발 지연 초당 감점
+const ARR_TOL = 10;           // 도착 지연 허용(초)
+const ARR_PEN_PER_SEC = 0.5;  // 도착 지연 초당 감점
+const ARR_CAP = 20;           // 역당 도착 지연 최대 감점
 const SKIP_LEAD = 10;         // 스킵 후 출발 시각까지 남는 시간(초)
+const MAX_TOTAL = 560;        // 최고점 (정위치 120×4 + 문 취급 20×4)
 
 const STATIONS = [
   { name: '해뜸역',  stop: 400,  arr: 60,   dep: 100  },
@@ -245,33 +257,41 @@ const LIMITS = [
   { from: 2900, kmh: 40 },
 ];
 
+const DOOR_LABEL = { closed: '닫힘', opening: '열리는 중', open: '열림', closing: '닫히는 중' };
+
 // ---------- 상태 ----------
-let x = 0, v = 0, notch = 0;      // x: 선로 위 위치(m), 열차는 -Z 방향으로 달림
+let x = 0, v = 0, notch = 0;      // x: 선로 위 위치(m), 전진 시 x 증가(열차는 -Z로 달림)
+let dir = 1;                      // 1 = 전진, -1 = 후진
 let emergency = false;
+let atsHalt = false;              // 지금 멈추는 중인 제동이 ATS에 의한 것인지
 let stationIdx = 0, score = 0, finished = false;
 let msgTimer = 0;
-let stationed = false;            // 정위치 정차 상태 (문 취급 전까지 출발 불가)
-let stopScored = false;           // 이 역의 정차 점수를 이미 받았는지
+let stationed = false;            // 정차구역 안에서 정차한 상태 (문 취급 가능)
+let stopScored = false;           // 이 역의 첫 정지를 이미 처리했는지 (정위치 점수 판정)
+let arrScored = false;            // 이 역의 도착 지연을 이미 처리했는지
 let openedOnce = false;           // 이번 정차에서 문을 연 적이 있는지
 let earlyClose = false;           // 이번 정차에서 15초 전 닫힘 감점을 받았는지
 let doorState = 'closed';         // closed | opening | open | closing
 let doorTimer = 0;
 let doorOpenT = 0;                // 문이 완전히 열린 뒤 경과 시간(승하차 시간)
-let waitingDepart = false;        // 문 취급을 마치고 출발 시각을 기다리는 중
-let depTarget = 0, depName = '';  // 기다리는 출발 시각과 역 이름
+let waitingDepart = false;        // 출발 시각을 기다리는 중
+let depTarget = 0, depName = '';  // 출발 목표 시각과 역 이름
 let clock = 0;                    // 운행 시계 (06:00:00 기준 초)
 let btnATime = -999, btnBTime = -999;
 let psdP = 0;                     // 스크린도어 개폐 진행도 (3D 애니메이션용)
+let segIdx = -1, segOverPen = 0;  // 현재 제한속도 구간과 그 구간의 과속 감점
 
 // ---------- DOM ----------
 const spdEl = document.getElementById('spd');
-const limEl = document.getElementById('lim');
-const notchTxt = document.getElementById('notchTxt');
-const distEl = document.getElementById('dist');
-const stateEl = document.getElementById('state');
-const doorTxtEl = document.getElementById('doorTxt');
+const dirTxtEl = document.getElementById('dirTxt');
+const ovFillEl = document.getElementById('ovFill');
+const limTxtEl = document.getElementById('limTxt');
+const segPenEl = document.getElementById('segPen');
+const segCapEl = document.getElementById('segCap');
 const clockEl = document.getElementById('clockTxt');
-const ttDiffEl = document.getElementById('ttDiff');
+const stateEl = document.getElementById('stateTxt');
+const tgtRowEl = document.getElementById('tgtRow');
+const doorRowEl = document.getElementById('doorRow');
 const scoreEl = document.getElementById('score');
 const msgEl = document.getElementById('msg');
 const ebEl = document.getElementById('eb');
@@ -279,8 +299,65 @@ const resultEl = document.getElementById('result');
 const cellsEl = document.getElementById('cells');
 const ttEl = document.getElementById('tt');
 const skipBtnEl = document.getElementById('skipBtn');
+const dirBtnEl = document.getElementById('dirBtn');
+const needleEl = document.getElementById('needle');
+const limLineEl = document.getElementById('limLine');
+const zG = document.getElementById('zG');
+const zY = document.getElementById('zY');
+const zR = document.getElementById('zR');
+segCapEl.textContent = OVER_CAP;
 
-// ---------- 시각 표시 ----------
+// ---------- 속도계 ----------
+const SVGNS = 'http://www.w3.org/2000/svg';
+const GR = 84, GCX = 100, GCY = 100;   // 호 반지름과 중심
+// 속도 s → 호 위의 각도 (0km/h = 왼쪽, 최대 = 오른쪽)
+function gAng(s) { return Math.PI * (1 - Math.min(Math.max(s, 0), GAUGE_MAX) / GAUGE_MAX); }
+function gPt(s, r) { const a = gAng(s); return [GCX + r * Math.cos(a), GCY - r * Math.sin(a)]; }
+function arcPath(s1, s2) {
+  if (s2 <= s1) return 'M 0 0';
+  const [x1, y1] = gPt(s1, GR), [x2, y2] = gPt(s2, GR);
+  return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${GR} ${GR} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+{
+  const tickG = document.getElementById('ticks');
+  for (const s of [0, 20, 40, 60, 80, 100, GAUGE_MAX]) {
+    const [x1, y1] = gPt(s, GR - 17), [x2, y2] = gPt(s, GR - 10);
+    tickG.appendChild(svgEl('line', {
+      x1: x1.toFixed(1), y1: y1.toFixed(1), x2: x2.toFixed(1), y2: y2.toFixed(1),
+      stroke: '#ccc', 'stroke-width': 2
+    }));
+    if (s < GAUGE_MAX) {
+      const [tx, ty] = gPt(s, GR - 27);
+      const t = svgEl('text', {
+        x: tx.toFixed(1), y: (ty + 4).toFixed(1), 'text-anchor': 'middle', fill: '#ddd', 'font-size': 11
+      });
+      t.textContent = s;
+      tickG.appendChild(t);
+    }
+  }
+}
+let gaugeLimit = -1;
+// 제한속도에 맞춰 색 구간(초록: 허용, 노랑: 주의, 빨강: ATS)과 제한선 갱신
+function setGaugeLimit(lim) {
+  if (lim === gaugeLimit) return;
+  gaugeLimit = lim;
+  const a = Math.min(lim + OVER_TOL, GAUGE_MAX), b = Math.min(lim + ATS_KMH, GAUGE_MAX);
+  zG.setAttribute('d', arcPath(0, a));
+  zY.setAttribute('d', arcPath(a, b));
+  zR.setAttribute('d', arcPath(b, GAUGE_MAX));
+  const [x1, y1] = gPt(lim, GR - 12), [x2, y2] = gPt(lim, GR + 10);
+  limLineEl.setAttribute('x1', x1.toFixed(1));
+  limLineEl.setAttribute('y1', y1.toFixed(1));
+  limLineEl.setAttribute('x2', x2.toFixed(1));
+  limLineEl.setAttribute('y2', y2.toFixed(1));
+}
+
+// ---------- 표시 유틸 ----------
 // sec: 06:00:00 기준 경과 초 → "HH:MM:SS"
 function fmt(sec) {
   const total = 6 * 3600 + Math.max(0, Math.floor(sec));
@@ -290,6 +367,11 @@ function fmt(sec) {
   return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
 }
 
+// e: 정차 목표와의 차이(m). +면 지나침, -면 덜 옴
+function fmtDist(e) {
+  return (e >= 0 ? '+' : '-') + Math.abs(e).toFixed(2) + 'm';
+}
+
 function renderTT() {
   const rows = STATIONS.map((s, i) => {
     const cls = i < stationIdx ? 'done' : i === stationIdx ? 'cur' : '';
@@ -297,6 +379,15 @@ function renderTT() {
   }).join('');
   ttEl.innerHTML = `<div class="tt-title">시각표 (T 키로 닫기)</div>
     <table><tr><th>역</th><th>도착</th><th>출발</th></tr>${rows}</table>`;
+}
+
+// ---------- 정위치 점수 (선형) ----------
+// 0.2m 이내 만점(120점), 10m에서 0점
+function stopPoints(e) {
+  const a = Math.abs(e);
+  const pts = a <= 0.2 ? 120 : Math.max(0, 120 * (1 - (a - 0.2) / 9.8));
+  const grade = a <= 0.5 ? '완벽' : a <= 2 ? '우수' : a <= 5 ? '양호' : '미흡';
+  return { pts: Math.round(pts), grade };
 }
 
 // ---------- 마스콘 UI ----------
@@ -316,11 +407,9 @@ function updateLever() {
     const n = Number(k);
     const el = cells[k];
     el.classList.remove('active', 'p', 'b', 'n');
-    const d = n - notch;                 // 현재 단에서 떨어진 칸 수
+    const d = n - notch;
     if (d === 0) el.classList.add('active', n > 0 ? 'p' : n < 0 ? 'b' : 'n');
-    // 창은 5줄(행 높이 24px), 가운데 행(2번)이 현재 단. 위쪽이 제동(B), 아래쪽이 역행(P)
     el.style.top = ((2 + d) * 24 + 1) + 'px';
-    // 롤러 표면처럼 가장자리 칸을 뒤로 젖혀 원통 느낌을 줌
     el.style.transform = `rotateX(${-d * 28}deg)`;
     const ad = Math.abs(d);
     el.style.opacity = ad > 2 ? 0 : (1 - ad * 0.3);
@@ -329,17 +418,27 @@ function updateLever() {
 
 function setNotch(n) { notch = Math.max(-7, Math.min(4, n)); updateLever(); }
 
-// 당김(P): 역행 방향. 문이 열려 있거나 정차 중이거나 출발 시각 전이면 경고
+// 당김(P): 역행 방향. 여러 조건이 맞지 않으면 경고
 function notchUp() {
   if (notch + 1 > 0) {
     if (doorState !== 'closed') showMsg('출입문이 열려 있어 출발할 수 없습니다');
     else if (stationed) showMsg('문 열기 → 닫기를 마친 뒤 출발하세요');
+    else if (waitingDepart && dir < 0) showMsg('전진으로 바꾼 뒤 출발하세요');
     else if (waitingDepart && clock < depTarget) showMsg(`출발 시각 ${fmt(depTarget)}까지 ${Math.ceil(depTarget - clock)}초 남았어요`, 2500);
   }
   setNotch(notch + 1);
 }
 // 밀기(B): 제동 방향
 function notchDown() { setNotch(notch - 1); }
+
+// 방향 전환: 마스콘 N, 완전 정차, 문 닫힘, 정차 취급 완료 상태에서만 가능
+function toggleDir() {
+  if (notch !== 0) { showMsg('마스콘을 중립 N에 두고 방향을 바꾸세요'); return; }
+  if (v > 0) { showMsg('완전히 정차한 뒤에 방향을 바꿀 수 있어요'); return; }
+  if (doorState !== 'closed' || stationed) { showMsg('문 취급을 마친 뒤 방향을 바꿀 수 있어요'); return; }
+  dir = -dir;
+  showMsg(dir > 0 ? '전진 방향으로 전환' : '후진 방향으로 전환 (최고 10km/h)', 2000);
+}
 
 function emergencyBrake() {
   emergency = true;
@@ -354,11 +453,12 @@ document.getElementById('restartBtn').addEventListener('click', restart);
 document.getElementById('openA').addEventListener('click', () => pressOpen('A'));
 document.getElementById('openB').addEventListener('click', () => pressOpen('B'));
 document.getElementById('closeBtn').addEventListener('click', pressClose);
+document.getElementById('dirBtn').addEventListener('click', toggleDir);
 skipBtnEl.addEventListener('click', doSkip);
 
 // ---------- 키보드 ----------
 // ↑/W = 밀기(B), ↓/S = 당김(P), Space/E = 비상제동, 0/N = 중립,
-// O = 열림①, P = 열림②(둘 다 동시에), C = 닫힘, K = 시각 스킵, T = 시각표, R = 다시하기
+// O = 열림①, P = 열림②(둘 다 동시에), C = 닫힘, G = 전진/후진, K = 시각 스킵, T = 시각표, R = 다시하기
 addEventListener('keydown', (e) => {
   if (['ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
   if (e.repeat) return;
@@ -370,6 +470,7 @@ addEventListener('keydown', (e) => {
     case 'o': case 'O': pressOpen('A'); break;
     case 'p': case 'P': pressOpen('B'); break;
     case 'c': case 'C': pressClose(); break;
+    case 'g': case 'G': toggleDir(); break;
     case 'k': case 'K': doSkip(); break;
     case 't': case 'T': toggleTT(); break;
     case 'r': case 'R': restart(); break;
@@ -391,11 +492,13 @@ function pressOpen(side) {
   else if (stationed && doorState === 'closed') showMsg('열림 버튼 ①②를 동시에 누르세요', 2000);
 }
 
-// 인터록: 완전 정차 + PSD 범위 안 + 문이 닫힌 상태에서만 열림
+// 인터록: 완전 정차 + 정차구역(±10m) 안 + 문이 닫힌 상태에서만 열림
 function tryOpen() {
   if (doorState !== 'closed') return;
   if (v > 0) { showMsg('완전히 정차한 뒤에 문을 열 수 있어요'); return; }
-  if (!stationed) { showMsg('정위치 정차 마커(PSD 범위) 안에 세워야 문이 열려요'); return; }
+  if (!stationed || Math.abs(x - STATIONS[stationIdx].stop) > PSD_RANGE) {
+    showMsg('정차구역(±10m) 안에 세워야 문이 열려요'); return;
+  }
   doorState = 'opening';
   doorTimer = OPEN_T;
   showMsg('스크린도어와 출입문이 열립니다', 2500);
@@ -416,9 +519,10 @@ function pressClose() {
 }
 
 // ---------- 스킵 ----------
-// 문 취급을 마치고 출발 시각보다 10초 이상 남았을 때만 가능 (정시 도착 시)
+// 정차 중 문을 한 번이라도 연 뒤, 출발 시각보다 10초 이상 남았을 때 가능
+// 승하차 최소 시간(DWELL_MIN)은 실제 시간으로 재므로, 스킵해도 문을 닫으려면 그만큼 기다려야 함
 function canSkip() {
-  return waitingDepart && v === 0 && clock < depTarget - SKIP_LEAD;
+  return stationed && waitingDepart && openedOnce && v === 0 && clock < depTarget - SKIP_LEAD;
 }
 function doSkip() {
   if (!canSkip()) return;
@@ -427,11 +531,12 @@ function doSkip() {
 }
 
 // ---------- 유틸 ----------
-function limitAt(pos) {
-  let k = LIMITS[0].kmh;
-  for (const L of LIMITS) if (pos >= L.from) k = L.kmh;
+function segOf(pos) {
+  let k = 0;
+  for (let i = 0; i < LIMITS.length; i++) if (pos >= LIMITS[i].from) k = i;
   return k;
 }
+function limitAt(pos) { return LIMITS[segOf(pos)].kmh; }
 
 function showMsg(text, ms = 2500) {
   msgEl.textContent = text;
@@ -442,12 +547,13 @@ function showMsg(text, ms = 2500) {
 function advanceStation() {
   stationIdx++;
   stopScored = false;
+  arrScored = false;
   renderTT();
   if (stationIdx >= STATIONS.length) finish();
 }
 
-// 문 취급 완료: 15초 이상 승하차 + 닫힘이면 +20점, 15초 전 닫힘이면 보너스 없음
-// 다음 역으로 넘어가되, 이전 역 출발 시각까지 출발을 기다림
+// 문 취급 완료: 문을 닫으면 처리 (보너스 점수와 다음 역 전환)
+// 출발 시각 대기는 정차 확정 시점에 이미 시작되어 있음
 function completeStop() {
   const cur = STATIONS[stationIdx];
   const bonus = earlyClose ? 0 : 20;
@@ -457,22 +563,67 @@ function completeStop() {
   openedOnce = false;
   advanceStation();
   if (finished) return;
-  waitingDepart = true;
-  depTarget = cur.dep;
-  depName = cur.name;
   showMsg(`문 취급 완료${bonus ? ' (+20점)' : ''}. ${cur.name} 출발 시각 ${fmt(depTarget)}까지 대기`, 4000);
 }
 
 function finish() {
   finished = true;
   const s = Math.round(score);
-  const grade = s >= 400 ? '명기관사' : s >= 260 ? '숙련 기관사' : '수습 기관사';
+  const grade = s >= MAX_TOTAL * 0.9 ? '명기관사' : s >= MAX_TOTAL * 0.7 ? '숙련 기관사' : '수습 기관사';
   resultEl.innerHTML = `
     <h2>운행 완료</h2>
     <p>최종 점수 <b>${s}</b>점</p>
     <p>${grade}</p>
     <button class="btn" onclick="restart()">다시 시작 (R)</button>`;
   resultEl.style.display = 'block';
+}
+
+// ---------- 정지 판정 ----------
+// 정지할 때마다 호출. 정차구역 안이면 정차 처리, 밖이면 구역 안에 세우도록 안내
+// 정위치 점수: 이 역의 첫 정지이고 ATS가 아닌 경우에만 (구역 밖 정지 후 재정차, ATS 정지는 제외)
+// 도착 지연: 이 역에서 정차구역 안에서 처음 정지한 시각 기준
+function onHalt(target) {
+  const e = x - target.stop;
+  const inRange = Math.abs(e) <= PSD_RANGE;
+  const wasAts = atsHalt;
+  atsHalt = false;
+  const firstHalt = !stopScored;
+  stopScored = true;
+
+  if (!inRange) {
+    stationed = false;
+    showMsg(`${target.name} 정차구역 밖 정지 ${fmtDist(e)} · ${e < 0 ? '전진해서' : '후진해서'} 구역 안에 세우세요`, 5000);
+    return;
+  }
+
+  const parts = [];
+  if (firstHalt && !wasAts) {
+    const r = stopPoints(e);
+    score += r.pts;
+    parts.push(`${r.grade} (+${r.pts}점)`);
+  } else {
+    parts.push('정위치 점수 없음');
+  }
+  if (!arrScored) {
+    arrScored = true;
+    const delay = clock - target.arr;
+    if (delay > ARR_TOL) {
+      const pen = Math.min(ARR_CAP, (delay - ARR_TOL) * ARR_PEN_PER_SEC);
+      score -= pen;
+      parts.push(`도착 +${Math.round(delay)}초 (-${pen.toFixed(1)}점)`);
+    } else {
+      parts.push('도착 감점 없음');
+    }
+  }
+  if (wasAts) parts.push(`ATS 정지 (-${ATS_PEN}점)`);
+
+  stationed = true;
+  if (target.dep != null) {
+    waitingDepart = true;
+    depTarget = target.dep;
+    depName = target.name;
+  }
+  showMsg(`${target.name} 정차 ${fmtDist(e)} · ${parts.join(' · ')} · 열림 버튼 ①②를 동시에 누르세요`, 6000);
 }
 
 // ---------- 게임 로직 ----------
@@ -484,8 +635,18 @@ function update(dt) {
   }
 
   const target = STATIONS[stationIdx];
-  const limit = limitAt(x);
+  const limit = dir > 0 ? limitAt(x) : REV_LIMIT_KMH;
   const kmh = v * 3.6;
+  const spOver = kmh - limit;
+
+  // 과속 감점 (주의 구간): 허용 초과 ~ ATS 이전, 초당 감점, 제한속도 구간당 상한
+  const seg = segOf(x);
+  if (seg !== segIdx) { segIdx = seg; segOverPen = 0; }
+  if (dir > 0 && spOver > OVER_TOL && spOver <= ATS_KMH && segOverPen < OVER_CAP) {
+    const p = Math.min(OVER_PEN * dt, OVER_CAP - segOverPen);
+    score -= p;
+    segOverPen += p;
+  }
 
   // 문이 열려 있는 동안 승하차 시간 카운트
   if (doorState === 'open') doorOpenT += dt;
@@ -506,33 +667,33 @@ function update(dt) {
     }
   }
 
-  // 출발: 출발 시각이 되었고 마스콘이 당겨져 있으면 출발 (지연 계산)
-  if (waitingDepart && notch > 0 && clock >= depTarget) {
+  // 출발: 출발 시각 도달 + 정차 취급 끝(문 닫힘) + 전진 방향 + 마스콘 P
+  if (waitingDepart && !stationed && doorState === 'closed' && notch > 0 && clock >= depTarget && dir > 0) {
     waitingDepart = false;
     const delay = Math.round(clock - depTarget);
-    const over = Math.max(0, delay - DEP_TOL);
-    const pen = over * DEP_PEN_PER_SEC;
+    const late = Math.max(0, delay - DEP_TOL);
+    const pen = late * DEP_PEN_PER_SEC;
     score -= pen;
     const tag = delay <= DEP_TOL ? '정시' : `지연 ${delay}초, -${pen}점`;
     showMsg(`${depName} 출발 ${fmt(clock)} (목표 ${fmt(depTarget)}, ${tag})`, 3500);
   }
 
-  // ATS: 제한속도 +10km/h 초과 시 자동 비상제동
-  if (!emergency && kmh > limit + 10) {
+  // ATS: 제한속도 + ATS_KMH 초과 시 자동 비상제동
+  if (dir > 0 && !emergency && spOver > ATS_KMH) {
     emergency = true;
-    score -= 30;
-    showMsg('ATS 작동! 과속으로 자동 비상제동', 3000);
+    atsHalt = true;
+    score -= ATS_PEN;
+    showMsg(`ATS 작동! 과속으로 자동 비상제동 (-${ATS_PEN}점)`, 3000);
   }
-  // 과속 감점
-  if (kmh > limit) score -= 4 * dt;
 
-  // 가감속 계산 (정차 중, 문 취급 중, 출발 시각 전에는 역행 불가)
+  // 가감속 (정차 중, 문 취급 중, 출발 시각 전에는 역행·전진 불가)
+  const vmax = dir > 0 ? VMAX : REV_VMAX;
   let a = 0;
   if (emergency) {
     a = -EB_DEC;
   } else if (notch > 0) {
     const blocked = stationed || doorState !== 'closed' || waitingDepart;
-    a = blocked ? 0 : ACC[notch] * Math.max(0, 1 - v / VMAX);
+    a = blocked ? 0 : ACC[notch] * Math.max(0, 1 - v / vmax);
   } else if (notch < 0) {
     a = -DEC[-notch];
   }
@@ -540,40 +701,14 @@ function update(dt) {
 
   const prevV = v;
   v = Math.max(0, v + a * dt);
-  x += v * dt;
+  if (dir < 0 && v > REV_VMAX) v = REV_VMAX;
+  x += dir * v * dt;
+  if (x < X_MIN) { x = X_MIN; v = 0; }
 
   if (emergency && v === 0) emergency = false;
 
-  // 정차 판정: 움직이다가 멈춘 순간
-  if (prevV > 0 && v === 0) {
-    const inPSD = Math.abs(x - target.stop) <= PSD_RANGE;
-    let msg = '';
-    if (!stopScored && x >= target.stop - 30 && x <= target.stop + 10) {
-      const e = Math.abs(target.stop - x);
-      let pts, grade;
-      if (e <= 0.5)      { pts = 100; grade = '완벽한 정차'; }
-      else if (e <= 1.5) { pts = 80;  grade = '우수'; }
-      else if (e <= 3)   { pts = 50;  grade = '양호'; }
-      else if (e <= 5)   { pts = 25;  grade = '미흡'; }
-      else               { pts = 10;  grade = '정차 위치 이탈'; }
-      score += pts;
-      stopScored = true;
-      msg = `${target.name} 도착 ${fmt(clock)} (목표 ${fmt(target.arr)}) · ${grade} (+${pts}점)`;
-    }
-    if (inPSD) {
-      stationed = true;
-      msg += (msg ? ' · ' : '') + '열림 버튼 ①②를 동시에 누르세요';
-    } else if (msg) {
-      msg += ' · 정위치 범위 밖이라 문이 열리지 않아요. 다시 세우세요';
-    }
-    if (msg) showMsg(msg, 5000);
-  }
-
-  // 정차 목표를 지나쳐 버린 경우 (정차 불가 → 통과)
-  if (!stationed && x > target.stop + 10) {
-    showMsg(`${target.name} 통과! 정차 실패 (0점)`, 3500);
-    advanceStation();
-  }
+  // 움직이다가 멈춘 순간
+  if (prevV > 0 && v === 0) onHalt(target);
 }
 
 // ---------- 3D 장면 ----------
@@ -651,7 +786,7 @@ const sleepers = new THREE.InstancedMesh(
 }
 scene.add(sleepers);
 
-// 스크린도어 (PSD) 문짝: 정위치 범위(±PSD_RANGE)를 덮는 4장, 열릴 때 위로 올라감
+// 스크린도어 (PSD) 문짝: 정위치 범위(±10m)를 덮는 4장, 열릴 때 위로 올라감
 const psdDoors = [];
 
 // 역 만들기
@@ -703,7 +838,7 @@ STATIONS.forEach((st, si) => {
   psdRail.position.set(1.75, 2.45, zc);
   scene.add(psdRail);
 
-  // 정위치 범위(±PSD_RANGE)를 덮는 스크린도어 문짝 4장 (각 5m)
+  // 정위치 범위(±10m)를 덮는 스크린도어 문짝 4장 (각 5m)
   for (let k = 0; k < 4; k++) {
     const off = -7.5 + k * 5;
     const panel = new THREE.Mesh(
@@ -732,13 +867,13 @@ STATIONS.forEach((st, si) => {
   sign.position.set(3.6, 3.6, -st.stop + 50 - 2);
   scene.add(sign);
 
-  // 정차 구역(초록) 과 정차 목표선(빨강)
+  // 정위치 범위(초록, ±10m)와 정차 목표선(빨강)
   const zone = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.9, 40),
+    new THREE.PlaneGeometry(1.9, 20),
     new THREE.MeshBasicMaterial({ color: 0x50dc78, transparent: true, opacity: 0.45 })
   );
   zone.rotation.x = -Math.PI / 2;
-  zone.position.set(0, 0.04, -(st.stop - 10));
+  zone.position.set(0, 0.04, -st.stop);
   scene.add(zone);
 
   const line = new THREE.Mesh(
@@ -844,39 +979,36 @@ function updatePSD3D(dt) {
 }
 
 // ---------- HUD ----------
-const DOOR_LABEL = { closed: '닫힘', opening: '열리는 중', open: '열림', closing: '닫히는 중' };
-
 function updateHUD() {
-  const limit = limitAt(x);
-  const kmh = Math.round(v * 3.6);
-  spdEl.textContent = kmh;
-  spdEl.style.color = kmh > limit ? '#ff5252' : '#fff';
-  limEl.textContent = limit;
-  notchTxt.textContent = notchName(notch);
+  const limit = dir > 0 ? limitAt(x) : REV_LIMIT_KMH;
+  const kmh = Math.max(0, v * 3.6);
+  setGaugeLimit(limit);
+
+  // 바늘과 속도 숫자
+  const [nx, ny] = gPt(Math.min(kmh, GAUGE_MAX), GR - 8);
+  needleEl.setAttribute('x2', nx.toFixed(1));
+  needleEl.setAttribute('y2', ny.toFixed(1));
+  spdEl.textContent = Math.round(kmh);
+  spdEl.style.color = kmh > limit + ATS_KMH ? '#ff5252' : kmh > limit + OVER_TOL ? '#ffd966' : '#fff';
+  dirTxtEl.textContent = 'km/h · ' + (dir > 0 ? '전진' : '후진');
+  dirBtnEl.textContent = dir > 0 ? '▶ 전진 (G)' : '◀ 후진 (G)';
+  ovFillEl.style.width = Math.round(segOverPen / OVER_CAP * 100) + '%';
+
+  // 상단 정보
+  limTxtEl.textContent = dir > 0 ? limit : `후진 ${REV_LIMIT_KMH}`;
+  segPenEl.textContent = Math.round(segOverPen);
+  segPenEl.style.color = segOverPen > 0 ? '#ff5252' : '#ccc';
+  clockEl.textContent = fmt(clock);
 
   const idx = Math.min(stationIdx, STATIONS.length - 1);
   const t2 = STATIONS[idx];
-  const d = t2.stop - x;
-  distEl.textContent = (d >= 0 ? d.toFixed(0) + ' m' : '통과') + '  (' + t2.name + ')';
-
-  // 운행 시계와 시각표 차이
-  clockEl.textContent = fmt(clock);
-  let diffText = '-', diffColor = '#ccc';
-  if (waitingDepart) {
-    const diff = Math.round(clock - depTarget);
-    diffText = `출발 목표 ${fmt(depTarget)} (${diff >= 0 ? '+' : ''}${diff}초)`;
-    diffColor = Math.abs(diff) <= DEP_TOL ? '#9f9' : '#ff8a80';
-  } else if (!finished && idx < STATIONS.length) {
-    const diff = Math.round(clock - t2.arr);
-    diffText = `도착 목표 ${fmt(t2.arr)} (${diff >= 0 ? '+' : ''}${diff}초)`;
-    diffColor = diff <= 0 ? '#9f9' : '#ffd966';
-  }
-  ttDiffEl.textContent = diffText;
-  ttDiffEl.style.color = diffColor;
+  const d = t2.stop - x;                       // +면 정차 목표 앞, -면 지나침
+  const distTxt = (d >= 0 ? '앞 ' : '지남 ') + Math.abs(d).toFixed(1) + 'm';
 
   // 상태 문구
   let st = '';
-  if (emergency) st = '비상제동 중';
+  if (finished) st = '운행 완료';
+  else if (emergency) st = '비상제동 중';
   else if (stationed) {
     if (doorState === 'closed') st = '정차 중 · 문을 여세요';
     else if (doorState === 'opening') st = '문 여는 중';
@@ -887,31 +1019,51 @@ function updateHUD() {
   } else if (waitingDepart) {
     const left = depTarget - clock;
     st = left > 0 ? `출발 대기 · ${Math.ceil(left)}초` : '출발 시각 · 마스콘을 당기세요';
+  } else if (d > 0 && d < 150) {
+    st = `${t2.name} 접근 중`;
+  } else {
+    st = '운행 중';
   }
   stateEl.textContent = st;
 
-  doorTxtEl.textContent = DOOR_LABEL[doorState];
-  doorTxtEl.style.color = doorState === 'closed' ? '#9f9' : '#ffb347';
+  // 목표 줄: 정차 중·출발 대기 중이면 출발 목표, 운행 중이면 다음 도착 목표
+  let tgtTxt = '', tgtColor = '#ccc';
+  if (!finished) {
+    if (waitingDepart) {
+      const diff = Math.round(clock - depTarget);
+      tgtTxt = `출발 목표 ${fmt(depTarget)} (${diff >= 0 ? '+' : ''}${diff}초)`;
+      tgtColor = Math.abs(diff) <= DEP_TOL ? '#9f9' : '#ff8a80';
+    } else if (!stationed) {
+      const diff = Math.round(clock - t2.arr);
+      tgtTxt = `도착 목표 ${fmt(t2.arr)} (${diff >= 0 ? '+' : ''}${diff}초 · ${distTxt})`;
+      tgtColor = diff <= ARR_TOL ? '#9f9' : '#ff8a80';
+    }
+  }
+  tgtRowEl.textContent = tgtTxt;
+  tgtRowEl.style.color = tgtColor;
+
+  doorRowEl.textContent = `출입문 ${DOOR_LABEL[doorState]}`;
+  doorRowEl.style.color = doorState === 'closed' ? '#9f9' : '#ffb347';
 
   skipBtnEl.style.display = canSkip() ? 'block' : 'none';
-
   scoreEl.textContent = Math.round(score);
   ebEl.style.display = emergency ? 'block' : 'none';
 }
 
 // ---------- 시작 / 재시작 ----------
 function restart() {
-  x = 0; v = 0; notch = 0; emergency = false;
+  x = 0; v = 0; notch = 0; dir = 1; emergency = false; atsHalt = false;
   stationIdx = 0; score = 0; finished = false;
-  stationed = false; stopScored = false; openedOnce = false; earlyClose = false;
+  stationed = false; stopScored = false; arrScored = false; openedOnce = false; earlyClose = false;
   doorState = 'closed'; doorTimer = 0; doorOpenT = 0;
   waitingDepart = false; depTarget = 0; depName = '';
   clock = 0;
   btnATime = -999; btnBTime = -999;
+  segIdx = -1; segOverPen = 0;
   resultEl.style.display = 'none';
   updateLever();
   renderTT();
-  showMsg('마스콘을 당겨 P1부터 출발하세요. 시각표(T)를 확인하고 정시에 맞추세요.', 5000);
+  showMsg('마스콘을 당겨 P1부터 출발하세요. 정차구역(±10m) 안에 세워야 정차 처리돼요.', 5000);
 }
 
 addEventListener('resize', () => {
@@ -926,6 +1078,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!finished) update(dt);
+  if (score < 0) score = 0;                    // 점수 하한 0
   updatePSD3D(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
