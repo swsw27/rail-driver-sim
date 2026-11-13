@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<!-- v0.9.0 -->
+<!-- v0.9.2 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -235,7 +235,7 @@ const DEP_PEN_PER_SEC = 2;    // 출발 지연 초당 감점
 const ARR_TOL = 10;           // 도착 지연 허용(초)
 const ARR_PEN_PER_SEC = 0.5;  // 도착 지연 초당 감점
 const ARR_CAP = 20;           // 역당 도착 지연 최대 감점
-const SKIP_LEAD = 10;         // 스킵 후 출발 시각까지 남는 시간(초)
+const SKIP_LEAD = 10;         // 스킵 후 출발 목표까지 남는 시간(초)
 const MAX_TOTAL = 560;        // 최고점 (정위치 120×4 + 문 취급 20×4)
 
 const STATIONS = [
@@ -519,15 +519,17 @@ function pressClose() {
 }
 
 // ---------- 스킵 ----------
-// 정차 중 문을 한 번이라도 연 뒤, 출발 시각보다 10초 이상 남았을 때 가능
-// 승하차 최소 시간(DWELL_MIN)은 실제 시간으로 재므로, 스킵해도 문을 닫으려면 그만큼 기다려야 함
+// 스킵: 시계를 출발 목표 10초 전으로 보내고, 생략한 시간만큼 승하차 시간에 더함
+// (실제 대기 + 생략 시간의 합이 15초를 넘으면 HUD에 "닫아도 됨" 표시)
 function canSkip() {
-  return stationed && waitingDepart && openedOnce && v === 0 && clock < depTarget - SKIP_LEAD;
+  return stationed && waitingDepart && doorState === 'open' && v === 0 && clock < depTarget - SKIP_LEAD - 1;
 }
 function doSkip() {
   if (!canSkip()) return;
-  clock = depTarget - SKIP_LEAD;
-  showMsg(`시각 스킵 → ${fmt(clock)} (출발 ${SKIP_LEAD}초 전)`, 2500);
+  const jump = (depTarget - SKIP_LEAD) - clock;
+  clock += jump;
+  doorOpenT += jump;
+  showMsg(`시각 스킵 → ${fmt(clock)} (생략 ${Math.round(jump)}초, 승하차 시간에 합산)`, 2500);
 }
 
 // ---------- 유틸 ----------
@@ -1014,7 +1016,7 @@ function updateHUD() {
     else if (doorState === 'opening') st = '문 여는 중';
     else if (doorState === 'open') {
       const left = Math.max(0, Math.ceil(DWELL_MIN - doorOpenT));
-      st = left > 0 ? `승하차 중 · ${left}초 남음` : '승하차 완료 · 닫으세요';
+      st = left > 0 ? `승하차 중 · ${left}초 남음` : '닫아도 됨';
     } else st = '문 닫는 중';
   } else if (waitingDepart) {
     const left = depTarget - clock;
