@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<!-- v0.9.2 -->
+<!-- v0.10.0 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -130,6 +130,10 @@
   .btn.door { background: #2f6f8f; }
   .btn.dir { background: #5a4a2a; }
 
+  #soundBtn {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    width: auto; margin: 0; padding: 8px 16px; font-size: 14px; z-index: 6;
+  }
   #result {
     top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; text-align: center;
     padding: 24px 30px; min-width: 260px; font-size: 18px;
@@ -203,6 +207,7 @@
   </div>
 </div>
 
+<button class="btn" id="soundBtn" title="M">🔇 사운드 켜기 (M)</button>
 <div id="result" class="panel"></div>
 
 <script>
@@ -299,6 +304,7 @@ const resultEl = document.getElementById('result');
 const cellsEl = document.getElementById('cells');
 const ttEl = document.getElementById('tt');
 const skipBtnEl = document.getElementById('skipBtn');
+const soundBtnEl = document.getElementById('soundBtn');
 const dirBtnEl = document.getElementById('dirBtn');
 const needleEl = document.getElementById('needle');
 const limLineEl = document.getElementById('limLine');
@@ -390,6 +396,139 @@ function stopPoints(e) {
   return { pts: Math.round(pts), grade };
 }
 
+// ---------- 사운드 (1단계: 구동음, 노치음, 문 소리) ----------
+// 음원 파일 없이 Web Audio로 합성. 첫 클릭 전에는 AudioContext를 만들지 않음
+const MASTER_VOL = 0.5;
+let audioCtx = null, master = null, sfxBus = null, noiseBuf = null;
+let droneOsc = null, droneFilter = null, droneGain = null;
+let noiseFilter = null, noiseGain = null;
+let soundOn = false;
+
+function initAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  audioCtx = new AC();
+
+  master = audioCtx.createGain();
+  master.gain.value = 0;
+  master.connect(audioCtx.destination);
+  sfxBus = audioCtx.createGain();
+  sfxBus.gain.value = 0.6;
+  sfxBus.connect(master);
+
+  // 노이즈 버퍼 (바퀴음, 공기음에 공용)
+  noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+  // 구동음: 저주파 톱니파 + 로우패스
+  droneOsc = audioCtx.createOscillator();
+  droneOsc.type = 'sawtooth';
+  droneOsc.frequency.value = 40;
+  droneFilter = audioCtx.createBiquadFilter();
+  droneFilter.type = 'lowpass';
+  droneFilter.frequency.value = 200;
+  droneGain = audioCtx.createGain();
+  droneGain.gain.value = 0;
+  droneOsc.connect(droneFilter);
+  droneFilter.connect(droneGain);
+  droneGain.connect(master);
+  droneOsc.start();
+
+  // 바퀴음: 노이즈 + 밴드패스
+  const rumble = audioCtx.createBufferSource();
+  rumble.buffer = noiseBuf;
+  rumble.loop = true;
+  noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 400;
+  noiseFilter.Q.value = 0.7;
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0;
+  rumble.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(master);
+  rumble.start();
+  return true;
+}
+
+// 사운드 켜기/끄기 (버튼, M 키)
+function toggleSound() {
+  if (!audioCtx) {
+    if (!initAudio()) { showMsg('이 브라우저에서는 사운드를 사용할 수 없습니다'); return; }
+    soundOn = true;
+  } else {
+    soundOn = !soundOn;
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  master.gain.setTargetAtTime(soundOn ? MASTER_VOL : 0, audioCtx.currentTime, 0.05);
+  soundBtnEl.textContent = soundOn ? '🔊 음소거 (M)' : '🔇 사운드 켜기 (M)';
+}
+
+// 짧은 음 한 개 (when: 지금부터 몇 초 뒤에 울릴지)
+function playTone(freq, dur, type, vol, when = 0) {
+  if (!audioCtx || !soundOn) return;
+  const t0 = audioCtx.currentTime + when;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g);
+  g.connect(sfxBus);
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+  o.onended = () => { o.disconnect(); g.disconnect(); };
+}
+
+// 짧은 노이즈 한 개 (공기 쉬익, 쿵 소리)
+function playNoise(dur, freq, type, vol, when = 0) {
+  if (!audioCtx || !soundOn) return;
+  const t0 = audioCtx.currentTime + when;
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuf;
+  const f = audioCtx.createBiquadFilter();
+  f.type = type;
+  f.frequency.value = freq;
+  f.Q.value = 1;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(vol, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f);
+  f.connect(g);
+  g.connect(sfxBus);
+  src.start(t0, Math.random());
+  src.stop(t0 + dur + 0.05);
+  src.onended = () => { src.disconnect(); f.disconnect(); g.disconnect(); };
+}
+
+function sfxNotch(n) {
+  playTone(260 + 45 * (n + 7), 0.09, 'triangle', 0.12);   // P1~B7 단계마다 음 높이가 다름
+}
+function sfxDoorOpen() {
+  playNoise(1.0, 2200, 'highpass', 0.08);                  // 공기 쉬익
+  playTone(1500, 0.12, 'square', 0.04);
+}
+function sfxDoorClose() {
+  playTone(880, 0.14, 'square', 0.08);                     // 부저
+  playNoise(0.2, 250, 'lowpass', 0.25, 0.5);               // 닫히는 쿵
+}
+
+// 구동음과 바퀴음: 속도에 따라 주파수와 음량을 부드럽게 변경 (매 프레임 호출)
+function updateSound() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const sp = soundOn && !finished ? Math.min(1, v / VMAX) : 0;
+  const moving = sp > 0.001;
+  droneOsc.frequency.setTargetAtTime(40 + 70 * sp, t, 0.1);
+  droneFilter.frequency.setTargetAtTime(200 + 600 * sp, t, 0.1);
+  droneGain.gain.setTargetAtTime(moving ? 0.02 + 0.07 * sp : 0, t, 0.15);
+  noiseFilter.frequency.setTargetAtTime(400 + 1500 * sp, t, 0.1);
+  noiseGain.gain.setTargetAtTime(moving ? 0.02 + 0.09 * sp : 0, t, 0.15);
+}
+
 // ---------- 마스콘 UI ----------
 function notchName(n) { return n > 0 ? 'P' + n : n < 0 ? 'B' + (-n) : 'N'; }
 
@@ -416,7 +555,12 @@ function updateLever() {
   }
 }
 
-function setNotch(n) { notch = Math.max(-7, Math.min(4, n)); updateLever(); }
+function setNotch(n) {
+  const next = Math.max(-7, Math.min(4, n));
+  if (next !== notch) sfxNotch(next);
+  notch = next;
+  updateLever();
+}
 
 // 당김(P): 역행 방향. 여러 조건이 맞지 않으면 경고
 function notchUp() {
@@ -455,6 +599,7 @@ document.getElementById('openB').addEventListener('click', () => pressOpen('B'))
 document.getElementById('closeBtn').addEventListener('click', pressClose);
 document.getElementById('dirBtn').addEventListener('click', toggleDir);
 skipBtnEl.addEventListener('click', doSkip);
+soundBtnEl.addEventListener('click', toggleSound);
 
 // ---------- 키보드 ----------
 // ↑/W = 밀기(B), ↓/S = 당김(P), Space/E = 비상제동, 0/N = 중립,
@@ -474,6 +619,7 @@ addEventListener('keydown', (e) => {
     case 'k': case 'K': doSkip(); break;
     case 't': case 'T': toggleTT(); break;
     case 'r': case 'R': restart(); break;
+    case 'm': case 'M': toggleSound(); break;
   }
 });
 
@@ -501,6 +647,7 @@ function tryOpen() {
   }
   doorState = 'opening';
   doorTimer = OPEN_T;
+  sfxDoorOpen();
   showMsg('스크린도어와 출입문이 열립니다', 2500);
 }
 
@@ -509,6 +656,7 @@ function pressClose() {
   if (doorState !== 'open') return;
   doorState = 'closing';
   doorTimer = CLOSE_T;
+  sfxDoorClose();
   if (doorOpenT < DWELL_MIN) {
     earlyClose = true;
     score -= EARLY_CLOSE_PENALTY;
@@ -1085,6 +1233,7 @@ function frame(now) {
   updateCamera(dt);
   renderer.render(scene, camera);
   updateHUD();
+  updateSound();
   requestAnimationFrame(frame);
 }
 
