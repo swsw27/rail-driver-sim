@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<!-- v0.10.0 -->
+<!-- v0.10.1 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -403,6 +403,10 @@ let audioCtx = null, master = null, sfxBus = null, noiseBuf = null;
 let droneOsc = null, droneFilter = null, droneGain = null;
 let noiseFilter = null, noiseGain = null;
 let soundOn = false;
+let brakeFilter = null, brakeGain = null, squealOsc = null, squealGain = null;
+let brakeAmt = 0;                 // 현재 감속 명령의 크기 (0~1), update()에서 갱신
+let railDist = 0;                 // 마지막 레일 이음매 이후 이동 거리(m)
+const JOINT_SPACING = 12.5;       // 레일 이음매 간격(m)
 
 function initAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -449,6 +453,31 @@ function initAudio() {
   noiseFilter.connect(noiseGain);
   noiseGain.connect(master);
   rumble.start();
+
+  // 제동음: 고역 노이즈 (감속 명령 크기에 비례)
+  brakeFilter = audioCtx.createBiquadFilter();
+  brakeFilter.type = 'highpass';
+  brakeFilter.frequency.value = 2000;
+  brakeFilter.Q.value = 0.5;
+  brakeGain = audioCtx.createGain();
+  brakeGain.gain.value = 0;
+  const brk = audioCtx.createBufferSource();
+  brk.buffer = noiseBuf;
+  brk.loop = true;
+  brk.connect(brakeFilter);
+  brakeFilter.connect(brakeGain);
+  brakeGain.connect(master);
+  brk.start(0, Math.random());
+
+  // 비상제동 비명음: 고음 사인파
+  squealOsc = audioCtx.createOscillator();
+  squealOsc.type = 'sine';
+  squealOsc.frequency.value = 2600;
+  squealGain = audioCtx.createGain();
+  squealGain.gain.value = 0;
+  squealOsc.connect(squealGain);
+  squealGain.connect(master);
+  squealOsc.start();
   return true;
 }
 
@@ -516,17 +545,58 @@ function sfxDoorClose() {
   playNoise(0.2, 250, 'lowpass', 0.25, 0.5);               // 닫히는 쿵
 }
 
-// 구동음과 바퀴음: 속도에 따라 주파수와 음량을 부드럽게 변경 (매 프레임 호출)
+// 정차 완료음: 정위치 등급별 음색. grade가 null이면 점수 없는 정차 (ATS, 재정차)
+function sfxStop(grade) {
+  if (grade === '완벽') {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => playTone(f, 0.5, 'triangle', 0.12, i * 0.08));
+  } else if (grade === '우수') {
+    playTone(659.25, 0.35, 'triangle', 0.12);
+    playTone(783.99, 0.4, 'triangle', 0.12, 0.12);
+  } else if (grade === '양호') {
+    playTone(440, 0.4, 'triangle', 0.12);
+  } else if (grade === '미흡') {
+    playTone(392, 0.3, 'triangle', 0.12);
+    playTone(293.66, 0.45, 'triangle', 0.12, 0.2);
+  } else {
+    playTone(523.25, 0.2, 'sine', 0.08);
+  }
+}
+
+// 출발 벨: 2회
+function sfxDepart() {
+  playTone(1320, 0.6, 'sine', 0.14);
+  playTone(1320, 0.6, 'sine', 0.14, 0.7);
+  playTone(2640, 0.3, 'sine', 0.04);
+}
+
+// 레일 이음매 소리: 속도에 따라 음량이 커짐
+function sfxJoint() {
+  const sp = Math.min(1, v / VMAX);
+  playNoise(0.05, 1800, 'bandpass', 0.05 + 0.15 * sp);
+}
+
+// 구동음·바퀴음·제동음·비상제동 비명음: 매 프레임 갱신
 function updateSound() {
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
-  const sp = soundOn && !finished ? Math.min(1, v / VMAX) : 0;
+  const on = soundOn && !finished;
+
+  // 구동음·바퀴음
+  const sp = on ? Math.min(1, v / VMAX) : 0;
   const moving = sp > 0.001;
   droneOsc.frequency.setTargetAtTime(40 + 70 * sp, t, 0.1);
   droneFilter.frequency.setTargetAtTime(200 + 600 * sp, t, 0.1);
   droneGain.gain.setTargetAtTime(moving ? 0.02 + 0.07 * sp : 0, t, 0.15);
   noiseFilter.frequency.setTargetAtTime(400 + 1500 * sp, t, 0.1);
   noiseGain.gain.setTargetAtTime(moving ? 0.02 + 0.09 * sp : 0, t, 0.15);
+
+  // 제동음: 감속 명령 크기에 비례, 속도가 줄면 함께 약해짐
+  const braking = on && brakeAmt > 0 && v > 0.3;
+  brakeFilter.frequency.setTargetAtTime(2000 + 2000 * brakeAmt, t, 0.1);
+  brakeGain.gain.setTargetAtTime(braking ? (0.02 + 0.12 * brakeAmt) * Math.min(1, v / 10) : 0, t, 0.08);
+
+  // 비상제동 비명음
+  squealGain.gain.setTargetAtTime(on && emergency && v > 0.3 ? 0.035 : 0, t, 0.05);
 }
 
 // ---------- 마스콘 UI ----------
@@ -747,9 +817,11 @@ function onHalt(target) {
   }
 
   const parts = [];
+  let grade = null;
   if (firstHalt && !wasAts) {
     const r = stopPoints(e);
     score += r.pts;
+    grade = r.grade;
     parts.push(`${r.grade} (+${r.pts}점)`);
   } else {
     parts.push('정위치 점수 없음');
@@ -766,6 +838,7 @@ function onHalt(target) {
     }
   }
   if (wasAts) parts.push(`ATS 정지 (-${ATS_PEN}점)`);
+  sfxStop(grade);
 
   stationed = true;
   if (target.dep != null) {
@@ -820,6 +893,7 @@ function update(dt) {
   // 출발: 출발 시각 도달 + 정차 취급 끝(문 닫힘) + 전진 방향 + 마스콘 P
   if (waitingDepart && !stationed && doorState === 'closed' && notch > 0 && clock >= depTarget && dir > 0) {
     waitingDepart = false;
+    sfxDepart();
     const delay = Math.round(clock - depTarget);
     const late = Math.max(0, delay - DEP_TOL);
     const pen = late * DEP_PEN_PER_SEC;
@@ -848,12 +922,20 @@ function update(dt) {
     a = -DEC[-notch];
   }
   if (v > 0) a -= RESIST;
+  brakeAmt = emergency ? 1 : notch < 0 ? Math.min(1, DEC[-notch] / 1.2) : 0;
 
   const prevV = v;
   v = Math.max(0, v + a * dt);
   if (dir < 0 && v > REV_VMAX) v = REV_VMAX;
   x += dir * v * dt;
   if (x < X_MIN) { x = X_MIN; v = 0; }
+  if (v > 0) {
+    railDist += v * dt;
+    if (railDist >= JOINT_SPACING) {
+      railDist -= JOINT_SPACING;
+      sfxJoint();
+    }
+  }
 
   if (emergency && v === 0) emergency = false;
 
@@ -1210,6 +1292,7 @@ function restart() {
   clock = 0;
   btnATime = -999; btnBTime = -999;
   segIdx = -1; segOverPen = 0;
+  railDist = 0; brakeAmt = 0;
   resultEl.style.display = 'none';
   updateLever();
   renderTT();
