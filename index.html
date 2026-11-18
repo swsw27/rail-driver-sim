@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<!-- v0.10.1 -->
+<!-- v0.11.0 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -140,10 +140,131 @@
   }
   #result h2 { margin: 0 0 10px; }
   #result .btn { width: auto; padding: 10px 24px; margin-top: 12px; display: inline-block; }
+
+  /* ===== 시작 메뉴 (v0.11.0) =====
+     색 상수: 배경 #101820 / 제목 #fff / 부제 #94a3b8 / 영문 #333
+     초록 #86efac→#14532d / 파랑 #5eead4→#1e3a8a / 주황 #fef08a→#78350f
+     도움말 섹션 제목 #fde68a */
+  #c, #cab, .panel, #skipBtn { transition: opacity 0.3s, visibility 0.3s; }
+  body.in-menu #c, body.in-menu #cab, body.in-menu .panel, body.in-menu #skipBtn {
+    opacity: 0; visibility: hidden; pointer-events: none;
+  }
+  body.in-menu #soundBtn { z-index: 40; }
+
+  #menu {
+    position: fixed; inset: 0; z-index: 30; background: #101820; /* 메뉴 배경 */
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; overflow-y: auto;
+    opacity: 1; visibility: visible; transition: opacity 0.3s, visibility 0.3s;
+  }
+  #menu.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+  #menu h1 { margin: 0; font-size: clamp(30px, 6vw, 56px); font-weight: 900; color: #fff; text-align: center; }
+  #menu .sub { margin: 8px 0 40px; font-size: 16px; color: #94a3b8; text-align: center; }
+  #menu .ver { position: fixed; right: 14px; bottom: 10px; font-size: 12px; color: #94a3b8; }
+
+  .cards { display: flex; gap: 24px; justify-content: center; }
+  .mcard {
+    position: relative; width: 170px; height: 230px; padding: 20px; border: 0; border-radius: 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    font-family: inherit; color: #000; cursor: pointer; --op: 1;
+    transform: scale(1); opacity: var(--op);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: cardIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+  }
+  .mcard:nth-child(2) { animation-delay: 0.1s; }
+  .mcard:nth-child(3) { animation-delay: 0.2s; }
+  .mcard:hover { transform: scale(1.03); }
+  .mcard .t { font-size: 20px; font-weight: 700; color: #000; }
+  .mcard .e { font-size: 13px; color: #333; margin-top: 6px; }
+  .mcard.green  { background: linear-gradient(#86efac, #14532d); }
+  .mcard.blue   { background: linear-gradient(#5eead4, #1e3a8a); --op: 0.6; cursor: default; }
+  .mcard.orange { background: linear-gradient(#fef08a, #78350f); }
+  .mcard .badge {
+    position: absolute; top: 10px; right: 10px; padding: 3px 8px; border-radius: 10px;
+    background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 11px; font-weight: 700;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: var(--op); transform: none; }
+  }
+  @media (max-width: 600px) { .cards { flex-direction: column; align-items: center; } }
+
+  #menuToast {
+    position: fixed; bottom: 12vh; left: 50%; transform: translateX(-50%); display: none;
+    background: rgba(0, 0, 0, 0.8); color: #fff; padding: 10px 20px; border-radius: 10px;
+    font-size: 16px; font-weight: 700; z-index: 35; white-space: nowrap;
+  }
+
+  #helpModal {
+    position: fixed; inset: 0; z-index: 36; background: rgba(0, 0, 0, 0.7);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; visibility: hidden; transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s;
+  }
+  #helpModal.open { opacity: 1; visibility: visible; }
+  #helpPanel {
+    position: relative; width: min(640px, 90vw); max-height: 86vh; overflow-y: auto;
+    background: #1b2430; border-radius: 16px; padding: 24px 26px; color: #f2f2f2; font-size: 14px;
+    transform: translateY(-40px); transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  #helpModal.open #helpPanel { transform: translateY(0); }
+  #helpClose {
+    position: absolute; top: 8px; right: 12px; border: 0; background: none; color: #fff;
+    font-size: 28px; line-height: 1; cursor: pointer; font-family: inherit;
+  }
+  #helpPanel h2 { margin: 0 0 4px; font-size: 20px; }
+  #helpPanel h3 { margin: 18px 0 8px; font-size: 16px; color: #fde68a; } /* 섹션 제목 */
+  #helpPanel table { width: 100%; border-collapse: collapse; }
+  #helpPanel td { padding: 5px 8px; border-bottom: 1px solid #333; vertical-align: top; }
+  #helpPanel td:first-child { width: 36%; font-weight: 700; white-space: nowrap; }
+  #helpPanel ul { margin: 0; padding-left: 20px; line-height: 1.7; }
+  #helpPanel p { margin: 0; line-height: 1.6; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
-<body>
+<body class="in-menu">
+
+<div id="menu">
+  <h1>정위치를 지나치기 전에</h1>
+  <div class="sub">철도 운전 시뮬레이터</div>
+  <div class="cards">
+    <button class="mcard green" id="cardSubway"><div class="t">지하철 운전</div><div class="e">subway</div></button>
+    <button class="mcard blue" id="cardHsr"><span class="badge">준비 중</span><div class="t">고속철도 운전</div><div class="e">high-speed rail</div></button>
+    <button class="mcard orange" id="cardHelp"><div class="t">도움말</div><div class="e">help</div></button>
+  </div>
+  <div class="ver" id="menuVer">v0.11.0</div>
+</div>
+<div id="menuToast"></div>
+<div id="helpModal">
+  <div id="helpPanel" role="dialog" aria-label="도움말">
+    <button id="helpClose" aria-label="닫기">×</button>
+    <h2>도움말</h2>
+    <h3>조작법</h3>
+    <table>
+      <tr><td>↑ / W</td><td>밀기 (제동)</td></tr>
+      <tr><td>↓ / S</td><td>당김 (역행)</td></tr>
+      <tr><td>Space / E</td><td>비상제동</td></tr>
+      <tr><td>0 / N</td><td>중립</td></tr>
+      <tr><td>O</td><td>열림 ①</td></tr>
+      <tr><td>P</td><td>열림 ② (열림은 ①②를 0.6초 안에 동시에 눌러야 함)</td></tr>
+      <tr><td>C</td><td>닫힘</td></tr>
+      <tr><td>G</td><td>방향 전환</td></tr>
+      <tr><td>K</td><td>시각 스킵</td></tr>
+      <tr><td>T</td><td>시각표</td></tr>
+      <tr><td>R</td><td>다시하기</td></tr>
+      <tr><td>M</td><td>사운드 켜기/끄기</td></tr>
+    </table>
+    <h3>점수 규칙 요약</h3>
+    <ul>
+      <li>정위치: 0.2m 이내 만점 120점, 10m에서 0점</li>
+      <li>문 취급 완료 +20점, 15초 전에 닫으면 -50점</li>
+      <li>과속: 제한속도 +5km/h까지 감점 없음, 그 이상은 초당 감점, +10km/h 넘으면 ATS -60점</li>
+      <li>도착 지연: 10초까지 감점 없음, 초과분 초당 0.5점 (역당 최대 20점)</li>
+      <li>출발 지연: 10초까지 감점 없음, 초과분 초당 2점</li>
+    </ul>
+    <h3>목표</h3>
+    <p>구역 안에 정차해 문을 열고, 시각표를 지키며 최고 점수를 얻으세요. 만점 560점, 504점 이상이면 명기관사</p>
+  </div>
+</div>
 <canvas id="c"></canvas>
 
 <div id="cab">
@@ -398,7 +519,7 @@ function stopPoints(e) {
 
 // ---------- 사운드 (1단계: 구동음, 노치음, 문 소리) ----------
 // 음원 파일 없이 Web Audio로 합성. 첫 클릭 전에는 AudioContext를 만들지 않음
-const MASTER_VOL = 0.5;
+const MASTER_VOL = 0.75;
 let audioCtx = null, master = null, sfxBus = null, noiseBuf = null;
 let droneOsc = null, droneFilter = null, droneGain = null;
 let noiseFilter = null, noiseGain = null;
@@ -407,6 +528,8 @@ let brakeFilter = null, brakeGain = null, squealOsc = null, squealGain = null;
 let brakeAmt = 0;                 // 현재 감속 명령의 크기 (0~1), update()에서 갱신
 let railDist = 0;                 // 마지막 레일 이음매 이후 이동 거리(m)
 const JOINT_SPACING = 12.5;       // 레일 이음매 간격(m)
+let atsAlarm = false, atsBeepT = 0, atsBeepHi = false;   // ATS 경고음 (ATS 제동 중 반복)
+let cautionT = 0;                 // 과속 주의음 반복 타이머
 
 function initAudio() {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -569,10 +692,38 @@ function sfxDepart() {
   playTone(2640, 0.3, 'sine', 0.04);
 }
 
-// 레일 이음매 소리: 속도에 따라 음량이 커짐
+// 레일 이음매 소리: 덜컹덜컹 (이음매를 넘을 때 둔탁한 소리가 두 번 울림), 속도에 따라 음량이 커짐
 function sfxJoint() {
   const sp = Math.min(1, v / VMAX);
-  playNoise(0.05, 1800, 'bandpass', 0.05 + 0.15 * sp);
+  const vol = 0.05 + 0.12 * sp;
+  for (const when of [0, 0.13]) {
+    playTone(95, 0.09, 'sine', vol, when);
+    playNoise(0.07, 700, 'lowpass', vol * 0.9, when);
+  }
+}
+
+// ATS 발동음: 한 번 크게 울림
+function sfxAtsTrigger() {
+  playTone(1800, 0.35, 'sawtooth', 0.12);
+}
+
+// 과속 주의음: 약한 틱 (주의 구간에 있는 동안 반복)
+function sfxCaution() {
+  playTone(260, 0.07, 'square', 0.035);
+}
+
+// 결과 팬파레: 등급별 멜로디 (top: 명기관사, mid: 숙련, low: 수습)
+function sfxFinale(tier) {
+  if (tier === 'top') {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => playTone(f, 0.25, 'triangle', 0.14, i * 0.18));
+    [523.25, 659.25, 783.99, 1046.5].forEach(f => playTone(f, 1.2, 'triangle', 0.09, 0.9));
+  } else if (tier === 'mid') {
+    [523.25, 659.25, 783.99].forEach((f, i) => playTone(f, 0.3, 'triangle', 0.13, i * 0.2));
+  } else {
+    playTone(392, 0.35, 'triangle', 0.12);
+    playTone(329.63, 0.35, 'triangle', 0.12, 0.3);
+    playTone(261.63, 0.6, 'triangle', 0.12, 0.6);
+  }
 }
 
 // 구동음·바퀴음·제동음·비상제동 비명음: 매 프레임 갱신
@@ -675,6 +826,10 @@ soundBtnEl.addEventListener('click', toggleSound);
 // ↑/W = 밀기(B), ↓/S = 당김(P), Space/E = 비상제동, 0/N = 중립,
 // O = 열림①, P = 열림②(둘 다 동시에), C = 닫힘, G = 전진/후진, K = 시각 스킵, T = 시각표, R = 다시하기
 addEventListener('keydown', (e) => {
+  if (screenMode !== 'game') {                      // 메뉴 상태: 게임 키 차단, M(사운드)만 허용
+    if (!e.repeat && (e.key === 'm' || e.key === 'M')) toggleSound();
+    return;
+  }
   if (['ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
   if (e.repeat) return;
   switch (e.key) {
@@ -796,6 +951,7 @@ function finish() {
     <p>${grade}</p>
     <button class="btn" onclick="restart()">다시 시작 (R)</button>`;
   resultEl.style.display = 'block';
+  sfxFinale(s >= MAX_TOTAL * 0.9 ? 'top' : s >= MAX_TOTAL * 0.7 ? 'mid' : 'low');
 }
 
 // ---------- 정지 판정 ----------
@@ -871,6 +1027,15 @@ function update(dt) {
     segOverPen += p;
   }
 
+  // 과속 주의음: 주의 구간(허용 초과 ~ ATS 이전)에 있는 동안 약하게 반복
+  const inCaution = dir > 0 && !emergency && spOver > OVER_TOL && spOver <= ATS_KMH;
+  if (inCaution) {
+    cautionT -= dt;
+    if (cautionT <= 0) { cautionT = 0.7; sfxCaution(); }
+  } else {
+    cautionT = 0;
+  }
+
   // 문이 열려 있는 동안 승하차 시간 카운트
   if (doorState === 'open') doorOpenT += dt;
 
@@ -906,6 +1071,9 @@ function update(dt) {
   if (dir > 0 && !emergency && spOver > ATS_KMH) {
     emergency = true;
     atsHalt = true;
+    atsAlarm = true;
+    atsBeepT = 0;
+    sfxAtsTrigger();
     score -= ATS_PEN;
     showMsg(`ATS 작동! 과속으로 자동 비상제동 (-${ATS_PEN}점)`, 3000);
   }
@@ -937,7 +1105,16 @@ function update(dt) {
     }
   }
 
-  if (emergency && v === 0) emergency = false;
+  // ATS 경고음: 제동 중 계속 반복
+  if (atsAlarm) {
+    atsBeepT -= dt;
+    if (atsBeepT <= 0) {
+      atsBeepT = 0.28;
+      atsBeepHi = !atsBeepHi;
+      playTone(atsBeepHi ? 1500 : 1100, 0.14, 'square', 0.09);
+    }
+  }
+  if (emergency && v === 0) { emergency = false; atsAlarm = false; }
 
   // 움직이다가 멈춘 순간
   if (prevV > 0 && v === 0) onHalt(target);
@@ -1293,6 +1470,7 @@ function restart() {
   btnATime = -999; btnBTime = -999;
   segIdx = -1; segOverPen = 0;
   railDist = 0; brakeAmt = 0;
+  atsAlarm = false; atsBeepT = 0; cautionT = 0;
   resultEl.style.display = 'none';
   updateLever();
   renderTT();
@@ -1306,11 +1484,57 @@ addEventListener('resize', () => {
   updateLever();
 });
 
+// ---------- 메뉴 / 화면 전환 (v0.11.0) ----------
+let screenMode = 'menu';                           // 'menu' | 'game'
+const menuEl = document.getElementById('menu');
+const menuToastEl = document.getElementById('menuToast');
+const helpModalEl = document.getElementById('helpModal');
+let menuToastTimer = null;
+
+function showMenuToast(text, ms = 2000) {
+  menuToastEl.textContent = text;
+  menuToastEl.style.display = 'block';
+  clearTimeout(menuToastTimer);
+  menuToastTimer = setTimeout(() => { menuToastEl.style.display = 'none'; }, ms);
+}
+function openHelp() { helpModalEl.classList.add('open'); }
+function closeHelp() { helpModalEl.classList.remove('open'); }
+
+function startGame() {
+  // 첫 사용자 동작: 오디오 컨텍스트만 준비 (사운드는 꺼진 상태 유지)
+  if (!audioCtx) initAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  restart();
+  screenMode = 'game';
+  document.body.classList.remove('in-menu');
+  menuEl.classList.add('hide');
+  if (document.activeElement) document.activeElement.blur();
+  last = performance.now();
+}
+function backToMenu() {
+  restart();                                   // 복귀 시 초기화
+  screenMode = 'menu';
+  closeHelp();
+  document.body.classList.add('in-menu');
+  menuEl.classList.remove('hide');
+}
+
+document.getElementById('cardSubway').addEventListener('click', startGame);
+document.getElementById('cardHsr').addEventListener('click', () => showMenuToast('준비 중인 기능입니다', 2000));
+document.getElementById('cardHelp').addEventListener('click', openHelp);
+document.getElementById('helpClose').addEventListener('click', closeHelp);
+helpModalEl.addEventListener('click', (e) => { if (e.target === helpModalEl) closeHelp(); });
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (helpModalEl.classList.contains('open')) closeHelp();
+  else if (screenMode === 'game') backToMenu();
+});
+
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (!finished) update(dt);
+  if (!finished && screenMode === 'game') update(dt);
   if (score < 0) score = 0;                    // 점수 하한 0
   updatePSD3D(dt);
   updateCamera(dt);
