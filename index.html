@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<!-- v0.11.0 -->
+<!-- v0.11.1 -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>정위치를 지나치기 전에: 철도 운전 시뮬레이터</title>
 <style>
@@ -149,7 +149,13 @@
   body.in-menu #c, body.in-menu #cab, body.in-menu .panel, body.in-menu #skipBtn {
     opacity: 0; visibility: hidden; pointer-events: none;
   }
-  body.in-menu #soundBtn { z-index: 40; }
+  /* 사운드 버튼: 홈 화면 우상단에서만 표시 (이모티콘 형태), 게임 중에는 숨김 */
+  body:not(.in-menu) #soundBtn { display: none; }
+  body.in-menu #soundBtn {
+    z-index: 40; top: 14px; left: auto; right: 14px; transform: none;
+    padding: 6px 12px; font-size: 26px; line-height: 1.2; background: rgba(255, 255, 255, 0.1);
+  }
+  body.in-menu #soundBtn:hover { background: rgba(255, 255, 255, 0.2); }
 
   #menu {
     position: fixed; inset: 0; z-index: 30; background: #101820; /* 메뉴 배경 */
@@ -231,7 +237,7 @@
     <button class="mcard blue" id="cardHsr"><span class="badge">준비 중</span><div class="t">고속철도 운전</div><div class="e">high-speed rail</div></button>
     <button class="mcard orange" id="cardHelp"><div class="t">도움말</div><div class="e">help</div></button>
   </div>
-  <div class="ver" id="menuVer">v0.11.0</div>
+  <div class="ver" id="menuVer">v0.11.1</div>
 </div>
 <div id="menuToast"></div>
 <div id="helpModal">
@@ -251,7 +257,7 @@
       <tr><td>K</td><td>시각 스킵</td></tr>
       <tr><td>T</td><td>시각표</td></tr>
       <tr><td>R</td><td>다시하기</td></tr>
-      <tr><td>M</td><td>사운드 켜기/끄기</td></tr>
+      <tr><td>M</td><td>사운드 켜기/끄기 (홈 화면에서만)</td></tr>
     </table>
     <h3>점수 규칙 요약</h3>
     <ul>
@@ -328,7 +334,7 @@
   </div>
 </div>
 
-<button class="btn" id="soundBtn" title="M">🔇 사운드 켜기 (M)</button>
+<button class="btn" id="soundBtn" title="사운드 켜기/끄기 (M)" aria-label="사운드 켜기/끄기">🔇</button>
 <div id="result" class="panel"></div>
 
 <script>
@@ -614,7 +620,7 @@ function toggleSound() {
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
   master.gain.setTargetAtTime(soundOn ? MASTER_VOL : 0, audioCtx.currentTime, 0.05);
-  soundBtnEl.textContent = soundOn ? '🔊 음소거 (M)' : '🔇 사운드 켜기 (M)';
+  soundBtnEl.textContent = soundOn ? '🔊' : '🔇';
 }
 
 // 짧은 음 한 개 (when: 지금부터 몇 초 뒤에 울릴지)
@@ -844,7 +850,6 @@ addEventListener('keydown', (e) => {
     case 'k': case 'K': doSkip(); break;
     case 't': case 'T': toggleTT(); break;
     case 'r': case 'R': restart(); break;
-    case 'm': case 'M': toggleSound(); break;
   }
 });
 
